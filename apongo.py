@@ -25,30 +25,35 @@ class Regs(IntEnum):
     RamIn   = 8,
     RamOut  = 9,
 
-    # Display access
-    DspAddr = 10,
-    DspIn   = 11,
-    DspOut  = 12,
-
     # Various I/O
-    Paddle  = 13,
-    Temp    = 14,
-    Indir   = 15
+    PadA    = 10,
+    PadB    = 11,
+    Pulse   = 12 
+
+    # "Other"
+    TmpA    = 13,
+    TmpB    = 14,
+    TmpC    = 15,
+
+class PulseLines(IntEnum):
+    WaitEx  = 0x01
 
 # Tweakables.
 width = 11
-ram_size = 8
+ram_size = 11
 display_size = (32, 32)
+zoom = 32
 
 # Autocalculated masks and such.
 width_mask = (2 ** width) - 1
 word_width = width + 4 + 1
 word_mask = (2 ** word_width) - 1
 ram_mask = (2 ** ram_size) - 1
+display_scaled = (display_size[0] * zoom, display_size[1] * zoom)
 
 # Convert words to fields and back again.
 def to_word(src, dest, immediate=False):
-    return ((src & width_mask) << 5) | ((dest & 0xF) << 1) | (0x1 if immediate)
+    return ((src & width_mask) << 5) | ((dest & 0xF) << 1) | (0x1 if immediate else 0x0)
 
 def from_word(word):
     return ((word >> 5) & width_mask), ((word >> 1) & 0xF), (True if word & 0x1 else False)
@@ -57,35 +62,28 @@ def from_word(word):
 # ----
 # Machine state
 
+reg = [0] * 16
 rom = [0] * (2 ** width)
 ram = [0] * (2 ** ram_size)
-vram = [0] * (display_size[0] * display_size[1])
+
+pygame.init()
+screen = pygame.display.set_mode(display_scaled)
+fb = pygame.Surface(display_size).convert(8)
+sfb = pygame.Surface(display_scaled).convert(8)
 
 
 # ---- 
 # Assembler
 
-defines = {}
-reverse_source = {}
-
-class Macro():
-    def __init__(self, args, lines):
-        self.args = args
-        self.lines = lines
-
-    def inflate(self, called):
-        output = []
-        for line in self.lines:
-            line_toks = line.strip().split()
-            for i, tok in enumerate(line_toks):
-                if tok in self.args:
-                    line_toks[i] = called[self.args.index(tok)]
-            output.append(" ".join(line_toks))
-        return output
+parsed = {}
 
 def do_assembly(contents):
-    # First pass: clean, parse, and find definitions.
-    blocks = {}
+    # First pass: clean and parse.
+    global rom
+    global parsed
+    defines = {}
+    labels = {}
+    cip = 0
 
     for line in contents:
         line_toks = line.strip().split()
@@ -93,15 +91,142 @@ def do_assembly(contents):
         if len(line_toks) == 0 or line_toks[0].startswith("#"):
             continue
 
-        # Valid line. Is it a macro?
-        if line_toks[0].startswith("
+        if line_toks[0] == "@Lbl":
+            labels[line_toks[1]] = cip
+        elif line_toks[0] == "@Def":
+            defines[line_toks[1]] = line_toks[2]
+        elif line_toks[0] == "@Ip":
+            cip = int(line_toks[1]) & width_mask
+        else:
+            parsed[cip] = line_toks
+            cip += 1
+
+    # Second pass: replace and assemble.
+    for ip, tok in parsed.items():
+        #print(f"asm: {ip} is {' '.join(tok)}")
+
+        # Regular instruction - see what we can do with it
+        if len(tok) < 3 or tok[1] != ">":
+            # I'm just being mean
+            print(f"malformed expression {' '.join(tok)}")
+            sys.exit(-1)
+
+        src = 0
+        dest = 0
+        immed = False
+
+        # Replace defines
+        if tok[0] in defines: 
+            srctok = defines[tok[0]]
+        elif tok[0] in labels: 
+            srctok = labels[tok[0]]
+        elif tok[0].startswith("$") and tok[0][1:] in labels:
+            # Terrible hack for Ip writes
+            srctok = labels[tok[0][1:]]
+            immed = True
+        else: srctok = tok[0]
+
+        if tok[2] in defines: 
+            desttok = defines[tok[2]]
+        elif tok[2] in labels: 
+            desttok = labels[tok[2]]
+        else: desttok = tok[2]
+
+        if isinstance(srctok, str) and srctok.startswith("$"):
+            # Immediate value
+            src = int(srctok[1:]) & width_mask
+            immed = True
+        else:
+            # Possibly a named register
+            try:
+                src = Regs[srctok]
+            except KeyError:
+                # Must be an address?
+                src = int(srctok) & width_mask
+
+        try:
+            dest = Regs[desttok]
+        except KeyError:
+            # Must be a number?
+            dest = int(desttok) & width_mask
+
+        result = to_word(src, dest, immed)
+        rom[ip] = result
+        
+    print(f"Memory usage is {len(parsed)}/{2**width}w")
+
+
+def print_state():
+    cip = reg[Regs.Ip]
+    src, dst, immed = from_word(rom[cip])
+    if src == dst and src == Regs.Ip: return
+    print(f"Ip {cip:03X} : {rom[cip]:04X} : {'$' if immed else ' '}{src:03X} > {dst:03X} {(': ' + ' '.join(parsed[cip])) if cip in parsed else ''}", end="")
+    print(f"   OpA {reg[Regs.OpA]:03X} : OpB {reg[Regs.OpB]:03X} : Test {reg[Regs.Test]:03X} : PadA {reg[Regs.PadA]:03X}")
+
+
+
+printing = False
+waiting = False
+
+def sign_extended(val):
+    sign_bit = 1 << (width - 1)
+    return (val & (sign_bit - 1)) - (val & sign_bit)
+
+def do_step():
+    global reg
+    global ram
+    global waiting
+
+    if printing: print_state()
+
+    # Fetch instruction
+    cip = reg[Regs.Ip]
+    src, dest, immed = from_word(rom[cip])
+    
+    src &= width_mask
+    dest &= 0xF
+
+    # Do the move
+    if immed: data = src & width_mask # Might not need extender
+    else: data = reg[src & 0xF] & width_mask
+
+    if dest == Regs.IpTest:
+        if sign_extended(reg[Regs.Test]) > 0:
+            reg[Regs.Ip] = data
+        else:
+            reg[Regs.Ip] += 1
+    else:
+        reg[dest] = data
+        if dest != Regs.Ip:
+            reg[Regs.Ip] += 1
+
+    # Do spooky actions
+    reg[Regs.Add] = (reg[Regs.OpA] + reg[Regs.OpB]) & width_mask
+    reg[Regs.Nand] = (~(reg[Regs.OpA] & reg[Regs.OpB])) & width_mask
+
+    mpos = pygame.mouse.get_pos()
+    reg[Regs.PadA] = int(mpos[0] / 32) % 32
+    reg[Regs.PadB] = int(mpos[1] / 32) % 32
+
+    reg[Regs.RamOut] = ram[reg[Regs.RamAddr & ram_mask]]
+    if dest == Regs.RamIn: 
+        # Do the write
+        addr = reg[Regs.RamAddr]
+        ram[addr] = reg[Regs.RamIn]
+        # If it's in low memory, pass through to the display
+        if addr < (display_size[0] * display_size[1]):
+            fb.set_at((addr % display_size[0], int(addr / display_size[1])), reg[Regs.RamIn])
+
+    if reg[Regs.Pulse] & PulseLines.WaitEx:
+        waiting = True
+
+    reg[Regs.Pulse] = 0
+
+    reg[Regs.Ip] &= width_mask
+
 
 if __name__ == "__main__":
 
-    pygame.init()
-    screen = pygame.display.set_mode((32*32, 32*32))
-    fb = pygame.Surface((32, 32)).convert(8)
-    sfb = pygame.Surface((32*32, 32*32)).convert(8)
 
     fb.fill(pygame.Color(0, 255, 255))
 
@@ -110,43 +235,38 @@ if __name__ == "__main__":
     fb.set_palette_at(34, (0, 175, 0))
     fb.set_palette_at(240, (88, 88, 88))
     fb.set_palette_at(255, (238, 238, 238))
-
     sfb.set_palette(fb.get_palette())
 
-    assemble(sys.argv[1])
-    with open("assembled.bin", "w") as mch:
-        for i in range(0, 2**addr_width):
-            w = ram[i]
-            mch.write(f"{w:05X} ")
+    with open(sys.argv[1], "r") as source:
+        contents = source.readlines()
 
-    # Past the registers
-    ram[Regs.Ip] = start
+    do_assembly(contents)
+
+    with open("assembled.bin", "w") as mch:
+        for i in range(0, 2**width):
+            w = rom[i]
+            mch.write(f"{w:04X} ")
 
     run = True
-    do_tick = True
 
     while run:
         # Manage shit
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 run = False
-            #elif event.type == pygame.KEYDOWN:
-            #    do_tick = True
 
-        if do_tick:
-            #do_tick = False
-            
-            # Execute
-            step_cpu()
+        # Execute
+        do_step()
 
-            # Show it off
-            if waiting:
-                pygame.transform.scale(fb, (32*32, 32*32), dest_surface=sfb)
-                screen.blit(sfb, (0, 0))
-                pygame.display.update()
+        # Show it off
+        if waiting:
+            pygame.transform.scale(fb, display_scaled, dest_surface=sfb)
+            screen.blit(sfb, (0, 0))
+            pygame.display.update()
 
-                pygame.time.wait(15)
-                waiting = False
+            pygame.time.wait(15)
+            waiting = False
 
 
+    print(f"Again, memory usage is {len(parsed)}/{2**width}w")
     pygame.quit()
