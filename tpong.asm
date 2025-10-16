@@ -4,7 +4,7 @@
 
 # Color table.
 @Def White $255
-@Def Grey $240
+@Def Grey $240 
 @Def Red $160
 @Def Green $34
 @Def Black $0 

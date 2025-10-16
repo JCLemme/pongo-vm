@@ -1,0 +1,79 @@
+
+// To fix:
+// Statements won't decompose right without trailing spaces
+// I'd rather not need tilde for macro calls
+
+// Following https://www.verilog.com/VerilogBNF.html
+
+// 1. Source Text
+start: block*
+
+?block: macro | statement | inline
+
+macro: "!Macro" macro_name "(" macro_args? ")" statement* "!End"
+?macro_name: IDENTIFIER
+macro_args: port ("," port)*
+?port: argument
+
+?statement: (preprocessor | instruction | label | macro_call) NEWLINE*
+label: IDENTIFIER ":"
+
+?preprocessor: preprocessor_data | preprocessor_define | preprocessor_ip | preprocessor_generic
+
+preprocessor_ip: "!Ip" number
+preprocessor_data: "!Data" pp_args
+preprocessor_define: "!Define" IDENTIFIER argument
+
+preprocessor_generic: "!" IDENTIFIER pp_args?
+pp_args: ppport ("," ppport)*
+?ppport: (ESCAPED_STRING | character | argument)
+
+instruction: (instruction_reg | instruction_inh)
+instruction_reg: (bitfield | argument) ">" argument
+instruction_inh: (bitfield | argument) "?>" argument
+
+inline: "{" inline_instruction* "}"
+?inline_instruction: inline_push | inline_ad | inline_asd | inline_das
+inline_push: argument "+"
+inline_asd: "*" argument "> D"
+inline_ad: argument "> D"
+inline_das: "D >" argument "*"
+
+macro_call: "~" macro_name "(" macro_args? ")"
+
+
+// 8. General
+bitfield: "#[" bitfield_arg "]"
+?bitfield_arg: argument ("," argument)
+
+?argument: (argument_reg | argument_ind | argument_wid)
+argument_reg: (identifier | number)
+argument_ind: "*" (identifier | number)
+argument_wid: "+" (identifier | number)
+
+?number: "#"? (number_dec | number_hex | number_bin)
+
+identifier: IDENTIFIER
+
+IDENTIFIER: CNAME
+          | ESCAPED_IDENTIFIER
+
+number_dec: SIGNED_NUMBER
+number_hex: ("$" | "0x" | "0X") /[0-9a-fA-F]+/
+number_bin: ("0b" | "0B") /[0-1]+/
+
+character: "'" /./ "'"
+
+
+// Lark
+ESCAPED_IDENTIFIER: /\\([^\s]+)/
+COMMENT: ";" /[^\n]*/ NEWLINE
+NEWLINE: ("\n" | "\r\n")
+
+%import common.CNAME
+%import common.ESCAPED_STRING
+%import common.WS
+%import common.SIGNED_NUMBER
+
+%ignore WS
+%ignore COMMENT
