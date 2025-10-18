@@ -26,9 +26,9 @@ preprocessor_define: "!Define" IDENTIFIER argument
 
 preprocessor_generic: "!" IDENTIFIER pp_args?
 pp_args: ppport ("," ppport)*
-?ppport: (ESCAPED_STRING | character | argument)
+?ppport: (string | character | argument)
 
-instruction: (instruction_reg | instruction_inh)
+?instruction: (instruction_reg | instruction_inh)
 instruction_reg: (bitfield | argument) ">" argument
 instruction_inh: (bitfield | argument) "?>" argument
 
@@ -37,19 +37,19 @@ inline: "{" inline_instruction* "}"
 inline_push: argument "+"
 inline_asd: "*" argument "> D"
 inline_ad: argument "> D"
-inline_das: "D >" argument "*"
+inline_das: "D > *" argument
 
 macro_call: "~" macro_name "(" macro_args? ")"
 
 
 // 8. General
-bitfield: "#[" bitfield_arg "]"
-?bitfield_arg: argument ("," argument)
+bitfield: "#[" (","? argument)* "]"
 
-?argument: (argument_reg | argument_ind | argument_wid)
+?argument: (argument_reg | argument_ind | argument_wid | argument_dub)
 argument_reg: (identifier | number)
 argument_ind: "*" (identifier | number)
 argument_wid: "+" (identifier | number)
+argument_dub: "**" (identifier | number)?
 
 ?number: "#"? (number_dec | number_hex | number_bin)
 
@@ -63,7 +63,7 @@ number_hex: ("$" | "0x" | "0X") /[0-9a-fA-F]+/
 number_bin: ("0b" | "0B") /[0-1]+/
 
 character: "'" /./ "'"
-
+string: ESCAPED_STRING
 
 // Lark
 ESCAPED_IDENTIFIER: /\\([^\s]+)/

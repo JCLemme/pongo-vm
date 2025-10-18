@@ -1,0 +1,10 @@
+; Converted from exampleimg.png
+
+IMG_exampleimg_w: !Data 6
+IMG_exampleimg_h: !Data 4
+
+IMG_exampleimg_data: 
+!Data $00, $00, $00, $00, $00, $00
+!Data $00, $0F, $00, $00, $0F, $00
+!Data $00, $0F, $00, $0F, $00, $00
+!Data $20, $00, $1F, $00, $00, $20

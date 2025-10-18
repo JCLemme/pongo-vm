@@ -1,0 +1,50 @@
+!Ip 0x0010
+
+; TODO: a better way of specifying these
+MXa: !Data 0
+MXb: !Data 0
+MXc: !Data 0
+MXd: !Data 0
+MXe: !Data 0
+MXf: !Data 0
+MXg: !Data 0
+MXh: !Data 0 ; Result of add
+
+!Ip $8000
+
+; Note: it's 100 instructions for an eight-bit add.
+; There's a breakeven point between this and just 
+; looping, and I'm guessing it's literally always.
+#22 > OpA
+#49 > OpB
+; TODO: default to indirect for identifiers, and allow crunch to force number
+; Please
+DoAdd:
+    *OpA > IndiLo
+    *OpB > Loop
+    _Weeee:
+        #[LoopDown,IndirectUp] > Flow
+        _Weeee ?> Ip
+    *IndiLo > Add
+
+*Add > Loop
+
+
+
+
+
+BlitStart:
+16384 > Indi
+1024 > Loop
+
+BlitLoop:
+    *17410 > **
+    #[LoopDown,IndirectUp,WaitForFrame] > Flow
+    BlitLoop ?> Ip
+BlitStart > Ip
+
+BlitExit:
+    16384 > Indi
+    *17410 > **
+    #[WaitForFrame] > Flow
+    BlitExit > Ip

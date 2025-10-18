@@ -50,7 +50,7 @@ syn keyword pongoVirtReg Loop Ip Indi OpA OpB Add TmpA TmpB TmpC TmpD TmpE
 syn match pongoIndirect "\*"
 
 " Raw regions
-syn region pongoRaw start='(' end=')' contains=pongoComment,pongoNumber,pongoIndirect
+syn region pongoRaw start='{' end='}' contains=pongoComment,pongoNumber,pongoIndirect
 
 " Bitfields
 syn region pongoBitfield start='#\[' end='\]' contains=pongoRegister
