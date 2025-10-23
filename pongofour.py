@@ -195,7 +195,7 @@ class PongoCore():
         self.d &= 0xFFFF
 
 # A note to you: on inhibit ordering
-# Initially, it was inhibit > 0, and 16w was preserved on failed D>A* 
+# Initially, it was inhibit > 0, and 16w was preserved on failed D>A*
 # ...which allowed optimized jumps like Exit ?> Ip; Again > Ip
 # Now we are trying inhibit == 0, so loops can run like Again ?> Ip;
 # ...but we can't preserve 16w because it would be dangling on loop exit

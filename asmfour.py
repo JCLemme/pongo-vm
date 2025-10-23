@@ -55,6 +55,9 @@ class AssemblerState():
         self.macros = {}
         self.regions = []
 
+        self.calls = 0
+        self.namespace = ""
+
     def add_region(self, origin):
         self.last_region = Region(origin)
         self.regions.append(self.last_region)
@@ -66,6 +69,11 @@ class AssemblerState():
         self.macros[macro.name] = macro
 
     def add_label(self, label):
+        if label.name.startswith("_"):
+            label.name = self.namespace + label.name
+        else:
+            self.namespace = label.name
+
         label.give_width_hint(self.last_region.origin)
         self.labels[label.name] = label
         self.add_statement(label)
@@ -75,6 +83,8 @@ class AssemblerState():
 
     def find_identifier(self, name):
         # Scan the tables.
+        if name.startswith("_"): name = self.namespace + name
+
         if name in cache_regs: return cache_regs[name]
         elif name in cache_flow: return cache_flow[name]
         elif name in cache_virts: return cache_virts[name]
@@ -118,27 +128,34 @@ class Argument():
 
     @classmethod
     def parse(cls, node: Token):
-        dubble = True if node.data == "argument_dub" else False
+        # Override type if the user makes it explicit.
         indirect = True if node.data == "argument_ind" else False
+        dubble = True if node.data == "argument_dub" else False
         wide = True if node.data == "argument_wid" else False
-       
+        negative = False
+
         # I don't like how I did this.
         if node.data == "bitfield":
             value = []
-            negative = False
             for bf in node.children:
                 tmparg = Argument.parse(bf)
                 value.append(tmparg.value)
+
         elif len(node.children) > 0:
             # It might be one of several types.
             child = node.children[0]
             value = cls.parse_value(child)
+
+            # Don't sign extend unless the user *wants* to sign extend.
             # TODO: no hack here plz
             negative = True if child.data == "number_dec" and value < 0 else False
+
+            # Unqualified identifiers should be treated as indirect unless coerced.
+            indirect = True if isinstance(value, str) and node.data == "argument_reg" else indirect
+
         else:
             # It's double indirect. We don't really care about the value.
-            value = pf.Regs.IndiLo
-            negative = False
+            value = 0xEA
 
         return cls(value, indirect, wide, negative, dubble)
 
@@ -154,6 +171,7 @@ class Argument():
                 out |= field
             else:
                 # Hack: select fields should automatically count as "wide".
+                # TODO: might be better off using the preprocessor to swap e.g. "Ip" with "+IpLo"
                 if field == "Ip" or field == "Loop" or field == "Indi":
                     self.wide = True
                 found = state.find_identifier(field)
@@ -339,7 +357,8 @@ class Label(Statement):
 
     @classmethod
     def parse(cls, node: Token):
-        return cls(node.children[0].value)
+        name = node.children[0].value
+        return cls(name)
 
     def give_width_hint(self, origin_hint):
         if origin_hint < 0x32:
@@ -356,17 +375,65 @@ class Label(Statement):
 
 # A block of code that can be inlined from anywhere in the program.
 class Macro():
-    def __init__(self, name: str, signature: list[str]):
+    def __init__(self, name: str, signature: list[Argument], content: list[Statement]):
         self.name = name
         self.signature = signature
-        self.contents = []
+        self.contents = content
 
     @classmethod
     def parse(cls, node: Token):
-        pass
+        # TODO: I must be doing tree navigation wrong.
+        call_node = node.children[0]
+        name = call_node.children[0].value
+        args = []
+        content = []
 
-    def generate(self, args):
-        pass
+        if len(call_node.children) > 1:
+            for arg in call_node.children[1].children:
+                args.append(Argument.parse(arg))
+       
+        for statement in node.children[1:]:
+            # TODO: dry this out
+            if statement.data.startswith("preprocessor"):
+                crash_out(trace(statement), "can't use preprocessor in a macro definition")
+
+            elif statement.data == "inline":
+                content.append(Inline.parse(statement))
+
+            elif statement.data.startswith("instruction"):
+                content.append(Instruction.parse(statement))
+
+            elif statement.data == "label":
+                content.append(Label.parse(statement))
+                 
+            elif statement.data == "macro_call":
+                content.append(MacroCall.parse(statement))
+
+            else:
+                crash_out(trace(statement), "unrecognized statement")
+
+        return cls(name, args, content)
+
+    def generate(self, state: AssemblerState, args: list[Argument]):
+        custom = []
+
+        for st in self.contents:
+            # Swap in arguments.
+            if len(args) > 0:
+                print("Not supported - args in macros.")
+                breakpoint()
+
+            # Localize labels to this call.
+            if isinstance(st, Label):
+                if not st.name.startswith("_"):
+                    st.name = str(state.calls) + "-" + st.name
+                state.add_label(st)
+        
+            custom.append(st)
+
+        # Return the mess.
+        return custom
+
 
 # A place to swap in a macro.
 class MacroCall(Statement):
@@ -376,11 +443,14 @@ class MacroCall(Statement):
 
     @classmethod
     def parse(cls, node: Token):
+        name = node.children[0].value
         args = []
-        for child in node.children:
-            args.append(Argument.parse(child))
 
-        return cls(node.value, args)
+        if len(node.children) > 1:
+            for arg in node.children[1].children:
+                args.append(Argument.parse(arg))
+
+        return cls(name, args)
 
 # A region in the binary containing statements.
 class Region():
@@ -408,9 +478,10 @@ class Region():
                 except Exception:
                     crash_out(trace(this_block), f"undefined macro \"{this_block.name}\"")
                 
-                fill_in = swap_macro.generate(this_block.args)
+                fill_in = swap_macro.generate(state, this_block.args)
+                state.calls += 1
 
-                self.statements.remove(this_block_idx)
+                del self.statements[this_block_idx]
                 for ib in range(len(fill_in)):
                     self.statements.insert(this_block_idx + ib, fill_in[ib])
 
@@ -477,7 +548,7 @@ if __name__ == "__main__":
 
     # Grow some trees.
     with open("asmfour.lark", "r") as gf:
-        parser = Lark(gf, propagate_positions = True)
+        parser = Lark(gf, propagate_positions=True)
         srctree = parser.parse(srcpadded)
 
     state = AssemblerState()
@@ -516,12 +587,13 @@ if __name__ == "__main__":
         else:
             crash_out(raw_line, "unrecognized statement")
 
-    breakpoint()
     # THE REVERSE PASS
+    breakpoint()
     for region in state.regions:
         region.inflate_children(state)
-    breakpoint()
+
     # DISNEY'S FASTPASS:TM:
+    breakpoint()
     for region in state.regions:
         region.render_children(state)
 
@@ -532,6 +604,6 @@ if __name__ == "__main__":
         for rp in range(len(region.rendered)):
             result[region.origin + rp] = region.rendered[rp]
 
-    with open("assm.bin", "wb") as binfile:
+    with open(sys.argv[2], "wb") as binfile:
         binfile.write(result)
 

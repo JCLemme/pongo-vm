@@ -1,0 +1,37 @@
+; This file will be included from test-pp.posm.
+
+!IfNotDefined _TEST_INCLUDE
+!Define _TEST_INCLUDE
+
+; Block circular imports.
+!Include "test-include.posm"
+
+; A macro we'll include from the main file.
+!Macro IncludedMacro(one, two)
+    one > Loop
+    _InLoop:
+        #[LoopDown] > Flow
+        _InLoop ?> Ip
+!EndMacro
+
+; Some defines to use also.
+!Define IncludedHehe ohoho
+!Define IncludedHaha ohaha
+
+!Define Ohoho 12
+!Warning "Include: Ohoho is " Ohoho
+!Undefine Ohoho
+
+; And some random ass instructions.
+IncludePls:
+    Loop > Loop
+    #10 > Ip
+    0x9 > IncludedHehe
+    #_Raws:
+    {
+        #12 > D
+        D > *IpLo
+    }
+    #_Raws > MainLo
+
+!EndIf

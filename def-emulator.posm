@@ -1,0 +1,10 @@
+; Hardware base registers.
+!Define Emu_ScreenBase $4000
+!Define Emu_PaddleA $4400
+!Define Emu_PaddleB $4401
+!Define Emu_Random $4402
+!Define Emu_Flow $4407
+
+; Hardware-specific flow lines.
+!Define WaitForFrame #$01
+

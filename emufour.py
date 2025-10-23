@@ -19,10 +19,14 @@ paddle_b = 0
 fb = None
 sfb = None
 
+printing = True
+pausing = True
+spins = 0
+
 def pongo_io(addr, data=None, waitex=False):
     global waiting_frame
     if waitex:
-        print("HDHDHDHDHDHDHDHDHD")
+        if printing: print(">>>>> Frame submitted! <<<<<")
         waiting_frame = True
         return
 
@@ -40,10 +44,6 @@ def pongo_io(addr, data=None, waitex=False):
         if addr < 1024:
             fb.set_at((addr % display_size[0], int(addr / display_size[1])), data)
 
-
-printing = True
-pausing = False
-spins = 0
 
 def print_state(core):
     global spins
@@ -63,6 +63,7 @@ if __name__ == "__main__":
     screen = pygame.display.set_mode(display_scaled)
     fb = pygame.Surface(display_size).convert(8)
     sfb = pygame.Surface(display_scaled).convert(8)
+    pygame.key.set_repeat(500, 50)
 
     # Set up the terminal.
     fb.fill(pygame.Color(0, 255, 255))
@@ -83,17 +84,23 @@ if __name__ == "__main__":
     
     # And repeat.
     run = True
+    paused = True
 
     while run:
-        # Execute an instruction.
-        if printing: print_state(core)
-        if pausing: input()
-        core.spin()
-
         # Handle I/O.
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 run = False
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    run = False
+                elif event.key == pygame.K_p:
+                    pausing = not pausing
+                elif event.key == pygame.K_o:
+                    printing = not printing
+                elif event.key == pygame.K_RETURN:
+                    if pausing:
+                        paused = False
 
         mpos = pygame.mouse.get_pos()
         paddle_a = int(mpos[0] / 32) % 32
@@ -104,8 +111,14 @@ if __name__ == "__main__":
             screen.blit(sfb, (0, 0))
             pygame.display.update()
 
-            pygame.time.wait(10)
+            # pygame.time.wait(16)
             waiting_frame = False
-
+        
+        # Execute an instruction.
+        if not pausing or (pausing and not paused):
+            if printing: print_state(core)
+            # TODO: run instructions to fill 60hz
+            core.spin()
+            paused = True
 
     pygame.quit()

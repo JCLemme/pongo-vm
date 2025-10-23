@@ -10,6 +10,17 @@ MXf: !Data 0
 MXg: !Data 0
 MXh: !Data 0 ; Result of add
 
+!Macro DoAdd(a, b, c)
+    DoAdd:
+    OpA > IndiLo
+    OpB > Loop
+    _Weeee:
+        #[LoopDown,IndirectUp] > Flow
+        #_Weeee ?> Ip
+    IndiLo > Add
+End!
+
+
 !Ip $8000
 
 ; Note: it's 100 instructions for an eight-bit add.
@@ -17,19 +28,10 @@ MXh: !Data 0 ; Result of add
 ; looping, and I'm guessing it's literally always.
 #22 > OpA
 #49 > OpB
-; TODO: default to indirect for identifiers, and allow crunch to force number
-; Please
-DoAdd:
-    *OpA > IndiLo
-    *OpB > Loop
-    _Weeee:
-        #[LoopDown,IndirectUp] > Flow
-        _Weeee ?> Ip
-    *IndiLo > Add
+DoAdd()
+Add > Loop
 
-*Add > Loop
-
-
+:
 
 
 
@@ -39,12 +41,14 @@ BlitStart:
 
 BlitLoop:
     *17410 > **
-    #[LoopDown,IndirectUp,WaitForFrame] > Flow
-    BlitLoop ?> Ip
-BlitStart > Ip
+    #[LoopDown,IndirectUp] > Flow
+    #BlitLoop ?> Ip
+
+#[WaitForFrame] > Flow
+#BlitStart > Ip
 
 BlitExit:
     16384 > Indi
     *17410 > **
     #[WaitForFrame] > Flow
-    BlitExit > Ip
+    #BlitExit > Ip

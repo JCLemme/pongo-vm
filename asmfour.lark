@@ -10,7 +10,8 @@ start: block*
 
 ?block: macro | statement | inline
 
-macro: "!Macro" macro_name "(" macro_args? ")" statement* "!End"
+macro: "!Macro" macro_call statement* "End!"
+macro_call: macro_name "(" macro_args? ")"
 ?macro_name: IDENTIFIER
 macro_args: port ("," port)*
 ?port: argument
@@ -39,19 +40,19 @@ inline_asd: "*" argument "> D"
 inline_ad: argument "> D"
 inline_das: "D > *" argument
 
-macro_call: "~" macro_name "(" macro_args? ")"
 
 
 // 8. General
 bitfield: "#[" (","? argument)* "]"
 
-?argument: (argument_reg | argument_ind | argument_wid | argument_dub)
+?argument: (argument_reg | argument_val | argument_ind | argument_wid | argument_dub)
 argument_reg: (identifier | number)
+argument_val: "#" (identifier | number)
 argument_ind: "*" (identifier | number)
 argument_wid: "+" (identifier | number)
 argument_dub: "**" (identifier | number)?
 
-?number: "#"? (number_dec | number_hex | number_bin)
+?number: (number_dec | number_hex | number_bin)
 
 identifier: IDENTIFIER
 

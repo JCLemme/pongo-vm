@@ -1,0 +1,35 @@
+; Crucial machine defines for Pongo.
+
+; Real registers.
+!Define IpLo    *$0
+!Define IpHi    *$1
+!Define LoopLo  *$2
+!Define LoopHi  *$3
+!Define IndiLo  *$4
+!Define IndiHi  *$5
+!Define Nand    *$6
+!Define Flow    *$7
+
+; Virtual registers.
+!Define Ip      +$0
+!Define Loop    +$2
+!Define Indi    +$4
+!Define OpA     *$8
+!Define OpB     *$9
+!Define Add     *$A
+!Define TmpA    *$B
+!Define TmpB    *$C
+!Define TmpC    *$D
+!Define TmpD    *$E
+!Define TmpE    *$F
+
+; Flow bits.
+!Define SixteenWide     #$01
+!Define InhibitIfZero   #$02
+!Define LoopDown        #$04
+!Define IndirectUp      #$08
+!Define StoreIndirect   #$10
+!Define LoadIndirect    #$20
+!Define IndirectDown    #$40
+!Define FlowUnused      #$80
+

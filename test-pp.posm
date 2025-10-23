@@ -1,0 +1,82 @@
+; Preprocessor test. 
+
+; The result of this process should be a file with 
+; * no comments
+; * included files slipstreamed
+; * no identifiers (other than labels)
+; * local labels / macro expansion labels tagged
+; * everything else ignored
+; * exported as tokens with single spaces between
+
+; This line is imaginary, but consider it real. (Gets added by preprocessor.)
+; !Include "machine.posm"
+
+; We'll test undefinition here.
+!Define Ohoho "HEHEHEHE"
+!Define MainLo mainlohehehe
+
+; Did scope work?
+!Warning "Main: Ohoho is" Ohoho
+
+; Test includes and include guards.
+!Include "test-include.posm"
+
+; Did the undefinition process right?
+!IfDefined Ohoho
+    !Error "Ohoho was still defined"
+!EndIf
+
+; A simple macro...
+!Macro DoNothing()
+    LoopLo > LoopLo
+!EndMacro
+
+; ...and a complex one
+!Macro DoItAll(o, b, ars)
+{
+    #9 > D
+    D > ars
+}
+_EmbeddedTag:
+    o > +Ip
+{
+    2 +
+    #_EmbeddedTag > D
+    D > b
+}
+!EndMacro
+
+; A preprocessor statement to ignore, plus instructions.
+!Origin $8000
+
+#1 > OpA
+#2 > OpB
+Add > Loop
+GlobalLabel:
+    #[LoopDown] > Flow
+    GlobalLabel > Ip
+
+MainLo > Indi  ; should
+** > **  ; test
+Crash > Out  ; these
+#0b1101 > TmpE  ; also
+
+; A macro from the other file.
+IncludedMacro(#11, #22)
+
+; Then a few of our own.
+DoNothing()
+DoItAll(1, 2, 3)
+DoItAll(4, 5, Emu_ScreenBase)
+Pain > *22
+DoNothing()
+
+
+
+
+; Caught you slippin'
+!Include "test-include.posm"
+
+Last > *Line
+
+

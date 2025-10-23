@@ -1,0 +1,18 @@
+!Ip $0010
+Datums: !Data 11, 22, 33, 44, 55
+
+!Ip $8000
+
+BlitStart:
+16384 > Indi
+1024 > Loop
+
+BlitLoop:
+    *17410 > **
+    #[LoopDown,IndirectUp] > Flow
+    #BlitLoop ?> Ip
+
+#[WaitForFrame] > Flow
+#BlitStart > Ip
+
+
