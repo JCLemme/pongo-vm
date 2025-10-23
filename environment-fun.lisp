@@ -127,10 +127,10 @@
 ; Shhhhhhh.
 
 ; Set flags.
-(defmacro do-flow (mask) `((a>d ,mask) (d>a* ,reg-flow)))
+(defun do-flow (mask) `((a>d ,mask) (d>a* ,reg-flow)))
 
 ; Semi-primitive move operation.
-(defmacro do-move (flags left right)
+(defun do-move (flags left right)
   ; Might need to set flags.
   (let* ((cflags flags)
          (cflags (if (is-type :ind left) (logior cflags flow-load-indirect) cflags))
@@ -138,7 +138,7 @@
          (cflags (if (is-type :wid left) (logior cflags flow-sixteen-wide) cflags))
          (cflags (if (is-type :wid right) (logior cflags flow-sixteen-wide) cflags)))
     ; Anatomy of a move: set flags, move into D, then move out of D.
-    `(,@(if (not (eq cflags 0)) '(do-flow cflags))
+    `(,@(if (not (eq cflags 0)) (do-flow cflags))
       (,(if (or (is-type :ptr left) (is-type :wid left)) 'a*>d 'a>d) ,(no-type left))
       (d>a* ,(no-type right))
       )
@@ -146,20 +146,22 @@
 )
 
 ; Basic "move number" instructions, conditional or not.
-(defmacro move (left right) (do-move 0 left right))
-(defmacro move-if (left right) (do-move flow-inhibit-if-zero left right))
+(defun move (left right) (do-move 0 left right))
+(defun move-if (left right) (do-move flow-inhibit-if-zero left right))
 
 ; Basic data block - just copy a list of bytes into the binary.
 ; lol actually just use "list"
 
 ; Jumping.
-(defmacro jump-to (addr) (move addr (as-type :wid reg-ip)))
-(defmacro jump-if (addr) (move-if addr (as-type :wid reg-ip)))
+(defun jump-to (addr) (move addr (as-type :wid reg-ip)))
+(defun jump-if (addr) (move-if addr (as-type :wid reg-ip)))
 
 
 ; Preprocessor blanks.
-(defmacro at-origin (v) nil)
-(defmacro at-label (v) nil)
+(defun at-origin (v) (list `(at-origin ,v)))
+(defun at-label (v) (list `(at-label ,v)))
+(defun embed (v) (list `(embed ',v)))
+
 
 ; Assemblerland below. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -181,23 +183,24 @@
 
 ; Inflation pass: convert complex statements into primitives.
 ; I feel as though this could be more elegant
-(defun inflation-pass (statements)
-  (apply #'append
-    (mapcar (lambda (stm)
-      (if (is-primitive (car (eval stm))) (eval stm) (list stm))
-    )
-    statements)
-  )
-)
+;(defun inflation-pass (statements)
+;  (apply #'append
+;    (mapcar (lambda (stm)
+;      (if (is-primitive (car (eval stm))) (eval stm) (list stm))
+;    )
+;    statements)
+;  )
+;)
+(defun inflation-pass (statements) (apply #'append (mapcar #'eval statements)))
 
 ; Looping.
 (defun loop-forever (body) 
   (let* ((lbl-begin "beginl")
          (lbl-end "endl")) 
-    `((label ,lbl-begin)
+    `((at-label ,lbl-begin)
       ,@(inflation-pass body)
       ,@(jump-to (label lbl-begin))
-      (label ,lbl-end)
+      (at-label ,lbl-end)
      )
   )
 )
@@ -206,11 +209,11 @@
   (let* ((lbl-begin "begincl")
          (lbl-end "endcl")) 
     `(,@(move len reg-loop)
-      (label ,lbl-begin)
+      (at-label ,lbl-begin)
       ,@(inflation-pass body)
       ,@(do-flow flow-loop-down)
       ,@(jump-if(label lbl-begin))
-      (label ,lbl-end)
+      (at-label ,lbl-end)
      )
   )
 )
@@ -267,7 +270,7 @@
   '(
     (at-origin #x0010)
     (at-label "Datums")
-    (list 11 22 33 44 55)
+    (embed '(11 22 33 44 55))
 
     (at-origin #x8000)
     (loop-forever '(
