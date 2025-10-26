@@ -126,10 +126,6 @@ class PongoCore():
                 if (data & FlowLines.IndirectUp): self.counter_up(Regs.IndiLo)
                 if (data & FlowLines.IndirectDown): self.counter_down(Regs.IndiLo)
                 
-                # A leaking abstraction: the IO handler controls frame timing, so we use its interface to
-                # set this bit. In hardware it'd be a separate "halt cpu" line that the GPU ties into.
-                if (data & FlowLines.WaitForFrame): self.io_handler(0, None, waitex=True)
-
         elif addr < 32768:
             self.io_handler((addr - 16384) & 0xFFFF, data)
 
@@ -162,7 +158,6 @@ class PongoCore():
             this_address = self.final_a(this_data)
             # Also note the order of ops here: need to inhibit looking at this flag during flow writes
             do_six = self.next_sixteen
-            self.next_sixteen = False
 
             if this_opcode == Opcodes.AsMovD:
                 if self.next_load_indirect:
@@ -170,15 +165,12 @@ class PongoCore():
                     self.next_load_indirect = False
 
                 new_data = self.get(this_address)
-                if self.next_sixteen: new_data = (self.get(this_address + 1) << 8 | new_data)
+                if do_six: new_data = (self.get(this_address + 1) << 8 | new_data)
                 # self.next_sixteen = False  # To enable wide load/stores in the same instruction
                 self.d = new_data
             
             elif this_opcode == Opcodes.DmovAs:
                 should_move = True
-                if self.next_store_indirect:
-                    this_address = (self.get(Regs.IndiHi) << 8 | self.get(Regs.IndiLo))
-                    self.next_store_indirect = False
 
                 if self.next_inhibit:
                     this_loop = self.get(Regs.LoopHi) << 8 | self.get(Regs.LoopLo)
@@ -186,8 +178,22 @@ class PongoCore():
                     self.next_inhibit = False
 
                 if should_move:
+                    if self.next_store_indirect:
+                        this_address = (self.get(Regs.IndiHi) << 8 | self.get(Regs.IndiLo))
+                        self.next_store_indirect = False
+
                     self.set(this_address, self.d)
-                    if do_six: self.set(this_address + 1, self.d >> 8)
+                    if do_six:
+                        self.set(this_address + 1, self.d >> 8)
+               
+                # What a confusing mess. For your reference later when you've forgotten the details
+                # * Loading wide should *not* clear the flag - never a good reason to load wide and store narrow
+                # * Storing wide should *always* clear the flag - prevents dangling wide writes after a loop
+                # This behavior was inverted before when the test was "inhibit if not zero" - we needed the dangling
+                # wide to support a guaranteed jump after the failing jump out of a loop
+                # Now loops happen with one jump so it needs to clear always
+                # Remember
+                if do_six: self.next_sixteen = False
 
             self.num_pushes = 0  # resetting every time reflects the circuit as built - could change
 

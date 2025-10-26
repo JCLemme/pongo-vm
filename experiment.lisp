@@ -1,35 +1,26 @@
+; Source code...
+(at-origin #x0030)
+(raw-data '(33))
 
-(defmacro do-addition (ta tb res) (append
-  (move-to ta reg-indilo)
-  (loop-for tb 
-    (do-flow flow-indirect-up)
-  )
-  (move-to reg-indilo res)
+(at-origin #x8000)
+
+; Display splash screen...
+(memcpy emureg-vram (label "IMG_splash_data") 1024)
+(wait-for-frame)
+
+; ...and wait for button press.
+(loop-if '(
+  (move #x00 reg-loophi)
+  (move emureg-buttons-a reg-looplo)
+  (loop--)
 ))
 
 
-(at-origin #x8000
+(memset emureg-vram 1024 #xEE)
+(wait-for-frame)
 
-  (do-addition 22 49 reg-add)
+(do-emuflow #x80)
+(halt)
 
-  (loop-forever (
-    (literal-to #x4000 reg-indi)
-
-    (loop-for (* 32 32)
-      (store-indirect hw-random)
-      (pulse-flow indirect-up)
-    )
-
-    (pulse-hw-flow wait-for-frame)
-
-    (loop-break)
-  ))
-  
-  (literal-to #x4000 reg-indi)
-
-  (loop-forever (
-    (store-indirect hw-random)
-    (pulse-hw-flow wait-for-frame)
-  ))
-)
-
+(at-origin #x9000)
+(read-source "splash.lisp")

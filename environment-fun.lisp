@@ -1,62 +1,35 @@
-;; Convert a number to chunks/bytes for the Pongo VM
-;; Takes: 16-bit fixnum
-;; Returns: list of 8-bit values
-;; Uses the negative path if MSB (bit 15) is set
+
 (defun number-to-chunks (num)
-  (let* ((fat (logand num #xFFFF))           ;; Ensure 16-bit
-         ;; Split the value into three chunks
-         (out0 (logand (ash fat -12) #xF))    ;; (fat & 0xF000) >> 12
-         (out1 (logand (ash fat -6) #x3F))    ;; (fat & 0x0FC0) >> 6
-         (out2 (logand fat #x3F))             ;; fat & 0x003F
-         ;; Check if MSB (bit 15) is set
+  (let* ((fat (logand num #xFFFF))           
+         (out0 (logand (ash fat -12) #xF))    
+         (out1 (logand (ash fat -6) #x3F))    
+         (out2 (logand fat #x3F))           
          (is-negative (not (zerop (logand fat #x8000)))))
 
     (if is-negative
-        ;; Negative path (if self.negative)
         (cond
-          ;; if outs[0] == 0xF and outs[1] == 0x3F and outs[2] & 0x20: return [outs[2]]
-          ((and (= out0 #xF)
-                (= out1 #x3F)
-                (not (zerop (logand out2 #x20))))
+          ((and (= out0 #xF) (= out1 #x3F) (not (zerop (logand out2 #x20))))
            (list out2))
 
-          ;; if outs[0] == 0xF and outs[1] == 0x3F and not (outs[2] & 0x20): return [0x3F, outs[2]]
-          ((and (= out0 #xF)
-                (= out1 #x3F)
-                (zerop (logand out2 #x20)))
+          ((and (= out0 #xF) (= out1 #x3F) (zerop (logand out2 #x20)))
            (list #x3F out2))
 
-          ;; if outs[0] == 0xF and outs[1] & 0x20: return outs[1:3]
-          ((and (= out0 #xF)
-                (not (zerop (logand out1 #x20))))
+          ((and (= out0 #xF) (not (zerop (logand out1 #x20))))
            (list out1 out2))
 
-          ;; return [outs[1], outs[0], outs[2]]
           (t (list out1 out0 out2)))
 
-      ;; Else path (not negative)
       (cond
-        ;; if outs[0] == 0x0 and outs[1] == 0x00 and not (outs[2] & 0x20): return [outs[2]]
-        ((and (= out0 #x0)
-              (= out1 #x00)
-              (zerop (logand out2 #x20)))
+        ((and (= out0 #x0) (= out1 #x00) (zerop (logand out2 #x20)))
          (list out2))
 
-        ;; if outs[0] == 0x0 and outs[1] == 0x00 and outs[2] & 0x20: return [0, outs[2]]
-        ((and (= out0 #x0)
-              (= out1 #x00)
-              (not (zerop (logand out2 #x20))))
+        ((and (= out0 #x0) (= out1 #x00) (not (zerop (logand out2 #x20))))
          (list 0 out2))
 
-        ;; if outs[0] == 0x0 and not (outs[1] & 0x20): return outs[1:3]
-        ((and (= out0 #x0)
-              (zerop (logand out1 #x20)))
+        ((and (= out0 #x0) (zerop (logand out1 #x20)))
          (list out1 out2))
 
-        ;; return [outs[1], outs[0], outs[2]]
         (t (list out1 out0 out2))))))
-
-
 
 ; Opcodes.
 (defconstant opcode-a*>d #b00 "Move value in address a to d")
@@ -64,24 +37,16 @@
 (defconstant opcode-d>a* #b10 "Move d to address a")
 (defconstant opcode-push #b11 "Push literal chunk to a")
 
-(defconstant reg-iplo #x0 "Instruction pointer, low byte")
-(defconstant reg-iphi #x1 "Instruction pointer, high byte")
-(defconstant reg-looplo #x2 "Loop register, low byte")
-(defconstant reg-loophi #x3 "Loop register, high byte")
-(defconstant reg-indilo #x4 "Indirect register, low byte")
-(defconstant reg-indihi #x5 "Indirect register, high byte")
-(defconstant reg-nand #x6 "Bitwise NAND of IndiLo and IndiHi")
-(defconstant reg-flow #x7 "Processor control flow bits")
+; Objects need type information. These functions provide it.
+; Types are :val (value), :ptr (pointer), :wid (wide pointer), :ind (indirect)
+(defun no-type (val) (if (listp val) (car val) val))
+(defun as-type (typ val) (list (no-type val) typ))
+(defun extract-type (val) (if (listp val) (car (cdr val)) :val))
+(defun is-type (typ val) (eq typ (extract-type val)))
 
-(defconstant flow-sixteen-wide #x01 "")
-(defconstant flow-inhibit-if-zero #x02 "")
-(defconstant flow-loop-down #x04 "")
-(defconstant flow-indirect-up #x08 "")
-(defconstant flow-store-indirect #x10 "")
-(defconstant flow-load-indirect #x20 "")
-(defconstant flow-indirect-down #x40 "")
-(defconstant flow-unused #x80 "")
-
+; We want label types to bind late.
+; TODO: remove hack here, probably by making :lbl a type of its own
+(defun number-or-call (val) (if (and (listp val) (eq (car val) 'label)) `(no-type ,val) (no-type val)))
 
 ; Stick a single raw instruction together.
 (defun assemble-one-raw-instruction (opcode data)
@@ -104,33 +69,89 @@
 (defun d>a* (addr) (build-raw-instructions opcode-d>a* (number-to-chunks addr)))
 (defun push-a (val) (assemble-one-raw-instruction opcode-push val))
 
-(defun is-primitive (stm) (if (listp stm) (member (car stm) '(a*>d a>d d>a* push-a)) nil))
+; Pseudoprimitives. Not instructions but similarly terminal nodes of the program.
+(defun raw-data (val) (if (listp val) val (list val)))
+(defun at-origin (val) nil)
+(defun at-label (val) nil)
 
-; Objects need type information. These functions provide it.
-; Types are :val (value), :ptr (pointer), :wid (wide pointer), :ind (indirect)
-(defun no-type (val) (if (listp val) (car val) val))
-(defun as-type (typ val) (list (no-type val) typ))
-(defun extract-type (val) (if (listp val) (car (cdr val)) :val))
-(defun is-type (typ val) (eq typ (extract-type val)))
+; And how to check for them.
+(defun is-primitive (stm) (if (listp stm) (member (car stm) '(a*>d a>d d>a* push-a raw-data at-origin at-label)) nil))
+
+; A special kind of primitive: the input sexp will execute during decomposition, but won't be included
+; in the primitive list. Useful for defining constants, macros, etc.
+(defun do-lisp (&rest v) nil)
+
+; Flatten any node of a tree into primitives.
+(defun decompose (stm) 
+  ; Any decomposable function will come in as a (populated) list, so ignore nil and atoms.
+  (if (and (not (eq stm nil)) (listp stm))
+    (apply #'append (mapcar (lambda (substm) 
+      (if (is-primitive substm) (list substm) (decompose (eval substm)))
+    ) stm))
+    nil
+  )
+)
+
+
+; Utility function to generate a unique string.
+(defvar *unique-calls* 0)
+(defun unique-id (prefix) (prog1 (concatenate 'string prefix (write-to-string *unique-calls*)) (setf *unique-calls* (+ *unique-calls* 1))))
+
+; Machineland below. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+(defconstant reg-iplo (as-type :ptr #x0) "Instruction pointer, low byte")
+(defconstant reg-iphi (as-type :ptr #x1) "Instruction pointer, high byte")
+(defconstant reg-looplo (as-type :ptr #x2) "Loop register, low byte")
+(defconstant reg-loophi (as-type :ptr #x3) "Loop register, high byte")
+(defconstant reg-indilo (as-type :ptr #x4) "Indirect register, low byte")
+(defconstant reg-indihi (as-type :ptr #x5) "Indirect register, high byte")
+(defconstant reg-nand (as-type :ptr #x6) "Bitwise NAND of IndiLo and IndiHi")
+(defconstant reg-flow (as-type :ptr #x7) "Processor control flow bits")
+
+(defconstant flow-sixteen-wide #x01 "")
+(defconstant flow-inhibit-if-zero #x02 "")
+(defconstant flow-loop-down #x04 "")
+(defconstant flow-indirect-up #x08 "")
+(defconstant flow-store-indirect #x10 "")
+(defconstant flow-load-indirect #x20 "")
+(defconstant flow-indirect-down #x40 "")
+(defconstant flow-unused #x80 "")
+
+(defconstant emureg-vram #x4000 "")
+(defconstant emureg-paddle-a (as-type :ptr #x4400) "")
+(defconstant emureg-buttons-a (as-type :ptr #x4401) "")
+(defconstant emureg-paddle-b (as-type :ptr #x4402) "")
+(defconstant emureg-buttons-b (as-type :ptr #x4403) "")
+(defconstant emureg-random (as-type :ptr #x4404) "")
+(defconstant emureg-flow (as-type :ptr #x4407) "")
+
+(defconstant emuflow-wait-frame #x01 "")
 
 ; Special registers. They carry some type information.
-; TODO: pointer types for the main registers please
 (defconstant reg-ip (as-type :wid reg-iplo))
 (defconstant reg-loop (as-type :wid reg-looplo))
 (defconstant reg-indi (as-type :wid reg-indilo))
+(defconstant reg-opa (as-type :ptr #x8))
+(defconstant reg-opb (as-type :ptr #x9))
+(defconstant reg-add (as-type :ptr #xa))
+(defconstant reg-tmpa (as-type :ptr #xb))
+(defconstant reg-tmpb (as-type :ptr #xc))
+(defconstant reg-tmpc (as-type :ptr #xd))
+(defconstant reg-tmpd (as-type :ptr #xe))
+(defconstant reg-tmpe (as-type :ptr #xf))
 
 ; Macroland below. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-; Specificity - loop-for, do-flow, etc.
-; These macros expand into trees of primitive statements that can later be mapcar'd into a binary.
-; Actually they're functions now. I wanted the terms to be evaluated. But that's OK. 
-; Shhhhhhh.
-
 ; Set flags.
-(defun do-flow (mask) `((a>d ,mask) (d>a* ,reg-flow)))
+(defun do-flow (mask) `((a>d ,mask) (d>a* ,(no-type reg-flow)))) ; a small lol here concering type constants
+(defun do-emuflow (mask) `((a>d ,mask) (d>a* ,(no-type emureg-flow)))) ; a small lol here concering type constants
 
 ; Semi-primitive move operation.
-(defun do-move (flags left right)
+; It's a macro so that we can pass evaluatable statements down for it to use later.
+; TODO: there might be some elegance in ignoring the quine, or rather making pointer types degrade as quines too
+; like quoting the number?
+; idk i can just feel it in bones
+(defmacro do-move (flags left right)
   ; Might need to set flags.
   (let* ((cflags flags)
          (cflags (if (is-type :ind left) (logior cflags flow-load-indirect) cflags))
@@ -139,84 +160,102 @@
          (cflags (if (is-type :wid right) (logior cflags flow-sixteen-wide) cflags)))
     ; Anatomy of a move: set flags, move into D, then move out of D.
     `(,@(if (not (eq cflags 0)) (do-flow cflags))
-      (,(if (or (is-type :ptr left) (is-type :wid left)) 'a*>d 'a>d) ,(no-type left))
-      (d>a* ,(no-type right))
+      (,(if (or (is-type :ptr left) (is-type :wid left) (is-type :ind left)) 'a*>d 'a>d) ,(number-or-call left))
+      (d>a* ,(number-or-call right))
       )
   )
 )
 
 ; Basic "move number" instructions, conditional or not.
-(defun move (left right) (do-move 0 left right))
-(defun move-if (left right) (do-move flow-inhibit-if-zero left right))
-
-; Basic data block - just copy a list of bytes into the binary.
-; lol actually just use "list"
+(defun move (left right) (macroexpand `(do-move 0 ,left ,right)))
+(defun move-if (left right) (macroexpand `(do-move ,flow-inhibit-if-zero ,left ,right)))
 
 ; Jumping.
 (defun jump-to (addr) (move addr (as-type :wid reg-ip)))
 (defun jump-if (addr) (move-if addr (as-type :wid reg-ip)))
 
+; Looping.
+(defun loop-forever (body)
+  (let* ((begl (unique-id "lfv-beg")) (endl (unique-id "lfv-end")))
+    `( (at-label ,begl) ,@body (jump-to (label ,begl)) (at-label ,endl))
+  )
+)
 
-; Preprocessor blanks.
-(defun at-origin (v) (list `(at-origin ,v)))
-(defun at-label (v) (list `(at-label ,v)))
-(defun embed (v) (list `(embed ',v)))
+(defun loop-for (len body)
+  (let* ((begl (unique-id "lfr-beg")) (endl (unique-id "lfr-end")))
+    `( (move ,len reg-loop) (at-label ,begl) ,@body (do-flow flow-loop-down) (jump-if (label ,begl)) (at-label ,endl))
+  )
+)
 
+(defun loop-if (body)
+  (let* ((begl (unique-id "lfv-beg")) (endl (unique-id "lfv-end")))
+    `( (move #x0000 reg-loop) (at-label ,begl) ,@body (jump-if (label ,begl)) (at-label ,endl))
+  )
+)
+
+; More convenient indirect addressing.
+(defun store-indirect (left)
+  (move left (as-type :ind reg-indilo)))
+
+(defun load-indirect (right)
+  (move (as-type :ind reg-indilo) right))
+
+; More convenient register math.
+; TODO: should be constants?
+(defun indi++ () (do-flow flow-indirect-up))
+(defun indi-- () (do-flow flow-indirect-down))
+(defun loop-- () (do-flow flow-loop-down))
+
+; Utility macros that use loops.
+(defun memset (addr len val)
+  `( (move ,addr reg-indi) 
+     (loop-for ,len '(
+       (store-indirect ,val) 
+       (indi++)
+     )) 
+   )
+)
+
+(defun memcpy (src dest len)
+  `( (move ,src (as-type :wid reg-tmpb))
+     (move ,dest (as-type :wid reg-tmpd))
+     (loop-for ,len '(
+        (move (as-type :wid reg-tmpd) reg-indi)
+        (load-indirect reg-tmpa)
+        (indi++)
+        (move reg-indi (as-type :wid reg-tmpd))
+
+        (move (as-type :wid reg-tmpb) reg-indi)
+        (store-indirect reg-tmpa)
+        (indi++)
+        (move reg-indi (as-type :wid reg-tmpb))
+     ))
+   )
+)
+
+
+(defun do-add ()
+  `((move reg-opa reg-indilo)
+    (loop-for reg-opb '(
+      (indi++)
+    ))
+    (move reg-indilo reg-add)
+   )
+)
+
+(defun halt () (loop-forever '()))
+
+; Emulator hardware functions.
+(defun wait-for-frame () (do-emuflow emuflow-wait-frame))
 
 ; Assemblerland below. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-; Functions to assemble a list of primitives into a binary.
-(defun flatten (struct) 
-  (cond ((null struct) nil) 
-        ((atom struct) (list struct)) 
-        (t (mapcan #'flatten struct))))
-
-(defun assemble (statements) (flatten (mapcar #'eval statements)))
-
-; Just for the record: my plan to solve this was a dynamic "defun" with auto-assembled symbol names.
-; It didn't work and I'm cross about it. I blame my tools.
-
 (defparameter *label-mapping* (make-hash-table :test 'equalp))  ; this test func is a case-insensitive string comparison
 
-(defun label (key) (gethash key *label-mapping*))
+(defun label (key) `(label ,key))
+;(defun label (key) (gethash key *label-mapping*))
 (defun label-set (key val) (setf (gethash key *label-mapping*) val))
 
-; Inflation pass: convert complex statements into primitives.
-; I feel as though this could be more elegant
-;(defun inflation-pass (statements)
-;  (apply #'append
-;    (mapcar (lambda (stm)
-;      (if (is-primitive (car (eval stm))) (eval stm) (list stm))
-;    )
-;    statements)
-;  )
-;)
-(defun inflation-pass (statements) (apply #'append (mapcar #'eval statements)))
-
-; Looping.
-(defun loop-forever (body) 
-  (let* ((lbl-begin "beginl")
-         (lbl-end "endl")) 
-    `((at-label ,lbl-begin)
-      ,@(inflation-pass body)
-      ,@(jump-to (label lbl-begin))
-      (at-label ,lbl-end)
-     )
-  )
-)
-
-(defun loop-for (len body) 
-  (let* ((lbl-begin "begincl")
-         (lbl-end "endcl")) 
-    `(,@(move len reg-loop)
-      (at-label ,lbl-begin)
-      ,@(inflation-pass body)
-      ,@(do-flow flow-loop-down)
-      ,@(jump-if(label lbl-begin))
-      (at-label ,lbl-end)
-     )
-  )
-)
 ; Label pass: run through a program and determine the width of all labels present.
 (defun label-pass (statements)
   (let* ((current-origin 0))
@@ -266,43 +305,28 @@
   )
 )
 
-(defvar *src-code* 
-  '(
-    (at-origin #x0010)
-    (at-label "Datums")
-    (embed '(11 22 33 44 55))
+; Load a file of sexps.
+(defun read-source (filename)
+  (with-open-file (stream filename) (loop for sexp = (read stream nil nil) while sexp collect sexp)))
 
-    (at-origin #x8000)
-    (loop-forever '(
-        (move 16384 reg-indi)
-   
-        (loop-for 1024 '(
-            (move (as-type :ptr 17410) (as-type :ind reg-indilo))
-            (do-flow flow-indirect-up)
-        ))
+; Put that binary in a file.
+(defun write-binary (src-array filename)
+  (with-open-file (stream filename :direction :output :element-type 'unsigned-byte :if-exists :supersede) (write-sequence src-array stream))
+)
 
-        (do-flow flow-unused)
-    ))
-))
-
-;(defvar *src-code* 
-;  '(
-;    (at-origin #x0010)
-;    (at-label "Datums")
-;    (list 11 22 33 44 55)
-;
-;    (at-origin #x8000)
-;    (at-label "BlitStart")
-;    (move 16384 reg-indi)
-;    (move 1024 reg-loop)
-;    
-;    (at-label "BlitLoop")
-;    (move (as-type :ptr 17410) (as-type :ind reg-indilo))
-;    (do-flow (logior flow-loop-down flow-indirect-up))
-;    (jump-if (label "BlitLoop"))
-;
-;    (do-flow flow-unused)
-;    (jump-to (label "BlitStart"))
-;))
+(defun assemble (filein fileout)
+  (let* ((code (read-source filein))
+         (dec-code (decompose code)))
+    (progn
+      (label-pass dec-code)
+      (defun label (key) (gethash key *label-mapping*)) 
+      (spacing-pass dec-code)
+      (binary-pass dec-code)
+      (write-binary *out-bin* fileout)
+    )
+  )
+)
 
 
+
+(eval-when (:execute) (assemble (car (uiop:command-line-arguments)) (car (cdr (uiop:command-line-arguments)))))

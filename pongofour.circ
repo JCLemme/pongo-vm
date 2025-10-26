@@ -820,42 +820,47 @@ a4 1b43 1e0 804f 13a 806f 13c 1c6
     <comp lib="5" loc="(720,950)" name="Joystick">
       <a name="bits" val="5"/>
     </comp>
-    <comp lib="8" loc="(1018,603)" name="Text">
+    <comp lib="5" loc="(770,2290)" name="RGB Video">
+      <a name="height" val="32"/>
+      <a name="scale" val="4"/>
+      <a name="width" val="64"/>
+    </comp>
+    <comp lib="8" loc="(1015,600)" name="Text">
       <a name="text" val="1 OR"/>
     </comp>
-    <comp lib="8" loc="(1024,559)" name="Text">
+    <comp lib="8" loc="(1020,555)" name="Text">
       <a name="text" val="20ish registers"/>
     </comp>
-    <comp lib="8" loc="(1090,628)" name="Text">
-      <a name="text" val="8 NAND"/>
-    </comp>
-    <comp lib="8" loc="(1091,582)" name="Text">
+    <comp lib="8" loc="(1090,580)" name="Text">
       <a name="text" val="3 AND"/>
+    </comp>
+    <comp lib="8" loc="(1090,625)" name="Text">
+      <a name="text" val="8 NAND"/>
     </comp>
     <comp lib="8" loc="(1140,515)" name="Text">
       <a name="text" val="Note: this allows high loads"/>
     </comp>
-    <comp lib="8" loc="(608,1412)" name="Text">
+    <comp lib="8" loc="(605,1410)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="pushed 1"/>
     </comp>
-    <comp lib="8" loc="(612,1502)" name="Text">
+    <comp lib="8" loc="(610,1500)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="pushed 2"/>
     </comp>
-    <comp lib="8" loc="(716,1364)" name="Text">
+    <comp lib="8" loc="(715,1360)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="magic sign extend"/>
     </comp>
-    <comp lib="8" loc="(716,1383)" name="Text">
+    <comp lib="8" loc="(715,1380)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="goes here"/>
     </comp>
-    <comp lib="8" loc="(747,1472)" name="Text">
+    <comp lib="8" loc="(745,1470)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="extend sign auto via pushes"/>
     </comp>
-    <comp lib="8" loc="(862,1115)" name="Text">
+    <comp lib="8" loc="(860,1115)" name="Text">
       <a name="text" val="x377: octal d-type with clk en"/>
     </comp>
     <wire from="(10,1280)" to="(10,1660)"/>
