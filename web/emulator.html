@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PongoVM Emulator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: #4ec9b0;
+            margin-bottom: 10px;
+            font-size: 2em;
+        }
+
+        .subtitle {
+            color: #808080;
+            margin-bottom: 30px;
+            font-size: 0.9em;
+        }
+
+        .layout {
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            gap: 20px;
+        }
+
+        .section {
+            background: #252526;
+            border: 1px solid #3e3e42;
+            border-radius: 4px;
+            padding: 20px;
+        }
+
+        h2 {
+            color: #569cd6;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+        }
+
+        .display-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+        }
+
+        #display {
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background: #000;
+            cursor: crosshair;
+            position: relative;
+        }
+
+        .crt-container {
+            position: relative;
+            display: inline-block;
+            background: #0a0a0a;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow:
+                inset 0 0 30px rgba(0, 0, 0, 0.9),
+                0 0 50px rgba(0, 255, 200, 0.1);
+        }
+
+        .crt-wrapper {
+            position: relative;
+            display: inline-block;
+            border: 2px solid #3e3e42;
+            overflow: hidden;
+            border-radius: 12px;
+        }
+
+        .crt-wrapper canvas {
+            display: block;
+            filter: contrast(1.1) brightness(1.05);
+        }
+
+        .crt-wrapper::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background:
+                radial-gradient(ellipse at center, rgba(0,0,0,0) 0%, rgba(0,0,0,0.3) 100%),
+                linear-gradient(
+                    rgba(18, 16, 16, 0) 50%,
+                    rgba(0, 0, 0, 0.25) 50%
+                );
+            background-size: 100% 100%, 100% 4px;
+            z-index: 2;
+            pointer-events: none;
+            border-radius: 12px;
+        }
+
+        .crt-wrapper::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(18, 16, 16, 0.1);
+            opacity: 0;
+            z-index: 2;
+            pointer-events: none;
+            animation: flicker 0.15s infinite;
+            border-radius: 12px;
+        }
+
+        @keyframes flicker {
+            0% { opacity: 0.27861; }
+            5% { opacity: 0.34769; }
+            10% { opacity: 0.23604; }
+            15% { opacity: 0.90626; }
+            20% { opacity: 0.18128; }
+            25% { opacity: 0.83891; }
+            30% { opacity: 0.65583; }
+            35% { opacity: 0.67807; }
+            40% { opacity: 0.26559; }
+            45% { opacity: 0.84693; }
+            50% { opacity: 0.96019; }
+            55% { opacity: 0.08594; }
+            60% { opacity: 0.20313; }
+            65% { opacity: 0.71988; }
+            70% { opacity: 0.53455; }
+            75% { opacity: 0.37288; }
+            80% { opacity: 0.71428; }
+            85% { opacity: 0.70419; }
+            90% { opacity: 0.7003; }
+            95% { opacity: 0.36108; }
+            100% { opacity: 0.24387; }
+        }
+
+        .crt-glow {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            box-shadow:
+                inset 0 0 100px rgba(0, 255, 200, 0.05),
+                inset 0 0 50px rgba(0, 200, 255, 0.03);
+            z-index: 1;
+            pointer-events: none;
+            border-radius: 12px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            width: 100%;
+        }
+
+        button {
+            background: #0e639c;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 13px;
+            transition: background 0.2s;
+            flex: 1;
+            min-width: 100px;
+        }
+
+        button:hover {
+            background: #1177bb;
+        }
+
+        button:active {
+            background: #0d5a8f;
+        }
+
+        button.secondary {
+            background: #2d2d30;
+        }
+
+        button.secondary:hover {
+            background: #3e3e42;
+        }
+
+        button.danger {
+            background: #a0302a;
+        }
+
+        button.danger:hover {
+            background: #c03030;
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .stat-item {
+            background: #1e1e1e;
+            padding: 10px;
+            border-radius: 3px;
+            border: 1px solid #3e3e42;
+        }
+
+        .stat-label {
+            color: #808080;
+            font-size: 10px;
+            text-transform: uppercase;
+            margin-bottom: 3px;
+        }
+
+        .stat-value {
+            color: #4ec9b0;
+            font-size: 14px;
+            font-weight: bold;
+            font-family: 'Monaco', monospace;
+        }
+
+        .debug-section {
+            background: #1e1e1e;
+            border: 1px solid #3e3e42;
+            border-radius: 3px;
+            padding: 10px;
+            font-size: 11px;
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 15px;
+        }
+
+        .debug-line {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 10px;
+            padding: 3px 0;
+        }
+
+        .debug-label {
+            color: #808080;
+        }
+
+        .debug-value {
+            color: #ce9178;
+            font-family: 'Monaco', monospace;
+        }
+
+        .flag {
+            display: inline-block;
+            padding: 2px 6px;
+            margin-right: 5px;
+            background: #1e1e1e;
+            border: 1px solid #3e3e42;
+            border-radius: 3px;
+            font-size: 10px;
+            color: #808080;
+        }
+
+        .flag.active {
+            background: #0e639c;
+            color: white;
+            border-color: #1177bb;
+        }
+
+        .status-running {
+            color: #4ec9b0;
+        }
+
+        .status-paused {
+            color: #ce9178;
+        }
+
+        .status-stopped {
+            color: #808080;
+        }
+
+        .speed-control {
+            margin-bottom: 15px;
+        }
+
+        .speed-control label {
+            display: block;
+            color: #808080;
+            font-size: 11px;
+            margin-bottom: 5px;
+        }
+
+        .speed-control input[type="range"] {
+            width: 100%;
+        }
+
+        .speed-value {
+            color: #4ec9b0;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+
+        .input-info {
+            background: #1e1e1e;
+            border: 1px solid #3e3e42;
+            padding: 10px;
+            border-radius: 3px;
+            margin-top: 15px;
+            font-size: 11px;
+        }
+
+        .input-info-title {
+            color: #569cd6;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+
+        .input-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 3px 0;
+            color: #808080;
+        }
+
+        .input-value {
+            color: #4ec9b0;
+        }
+
+        .rom-info {
+            background: #1e1e1e;
+            border: 1px solid #3e3e42;
+            padding: 10px;
+            border-radius: 3px;
+            margin-bottom: 15px;
+            font-size: 11px;
+            color: #808080;
+        }
+
+        .rom-loaded {
+            color: #4ec9b0;
+        }
+
+        .quick-examples {
+            display: flex;
+            gap: 8px;
+            margin-top: 15px;
+        }
+
+        .quick-example {
+            flex: 1;
+            background: #2d2d30;
+            border: 1px solid #3e3e42;
+            padding: 8px;
+            border-radius: 3px;
+            cursor: pointer;
+            text-align: center;
+            font-size: 11px;
+            transition: all 0.2s;
+        }
+
+        .quick-example:hover {
+            background: #3e3e42;
+            border-color: #4ec9b0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎮 PongoVM Emulator</h1>
+        <div class="subtitle">JavaScript port of the Python emulator</div>
+
+        <div class="layout">
+            <!-- Left: Display and Controls -->
+            <div>
+                <div class="section">
+                    <h2>Display</h2>
+                    <div class="display-container">
+                        <div class="crt-container">
+                            <div class="crt-wrapper">
+                                <canvas id="display" width="32" height="32"></canvas>
+                                <div class="crt-glow"></div>
+                            </div>
+                        </div>
+                        <div class="controls">
+                            <button onclick="toggleRunning()">▶ Start</button>
+                            <button class="secondary" onclick="stepInstruction()">⏭ Step</button>
+                            <button class="secondary" onclick="resetEmulator()">🔄 Reset</button>
+                            <button class="danger" onclick="stopEmulator()">⏹ Stop</button>
+                        </div>
+                        <div class="controls">
+                            <button class="secondary" onclick="document.getElementById('romFile').click()">📁 Load ROM</button>
+                            <button class="secondary" onclick="loadFromAssembler()">📋 From Assembler</button>
+                        </div>
+                        <input type="file" id="romFile" class="file-input" accept=".bin" onchange="loadROMFile(event)">
+                    </div>
+
+                    <div class="quick-examples">
+                        <div class="quick-example" onclick="loadQuickExample('fill')">Fill Screen</div>
+                        <div class="quick-example" onclick="loadQuickExample('pattern')">Pattern</div>
+                        <div class="quick-example" onclick="loadQuickExample('counter')">Counter</div>
+                    </div>
+
+                    <div class="input-info">
+                        <div class="input-info-title">Input State</div>
+                        <div class="input-row">
+                            <span>Paddle A (Mouse X):</span>
+                            <span class="input-value" id="paddleA">0</span>
+                        </div>
+                        <div class="input-row">
+                            <span>Paddle B (Mouse Y):</span>
+                            <span class="input-value" id="paddleB">0</span>
+                        </div>
+                        <div class="input-row">
+                            <span>Button A (Left Click):</span>
+                            <span class="input-value" id="buttonA">0</span>
+                        </div>
+                        <div class="input-row">
+                            <span>Button B (Right Click):</span>
+                            <span class="input-value" id="buttonB">0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: Debug Info -->
+            <div>
+                <div class="section">
+                    <h2>Status</h2>
+                    <div class="rom-info">
+                        <div>ROM: <span id="romStatus">No ROM loaded</span></div>
+                        <div>State: <span id="runStatus" class="status-stopped">Stopped</span></div>
+                    </div>
+
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <div class="stat-label">IP (Program Counter)</div>
+                            <div class="stat-value" id="statIP">$0000</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">A Register</div>
+                            <div class="stat-value" id="statA">$0000</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">D Register</div>
+                            <div class="stat-value" id="statD">$0000</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Loop Counter</div>
+                            <div class="stat-value" id="statLoop">$0000</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Indirect Pointer</div>
+                            <div class="stat-value" id="statIndi">$0000</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Instructions/Frame</div>
+                            <div class="stat-value" id="statSpeed">1000</div>
+                        </div>
+                    </div>
+
+                    <div class="speed-control">
+                        <label>Execution Speed (Instructions per Frame)</label>
+                        <input type="range" id="speedSlider" min="1" max="10000" value="1000" step="100">
+                        <div class="speed-value" id="speedValue">1000 inst/frame (~75 FPS)</div>
+                    </div>
+
+                    <h2>CPU State</h2>
+                    <div class="debug-section">
+                        <div class="debug-line">
+                            <span class="debug-label">Instruction:</span>
+                            <span class="debug-value" id="debugInst">--</span>
+                        </div>
+                        <div class="debug-line">
+                            <span class="debug-label">Flags:</span>
+                            <div>
+                                <span class="flag" id="flag16">16W</span>
+                                <span class="flag" id="flagInhibit">INH</span>
+                                <span class="flag" id="flagLoad">LDI</span>
+                                <span class="flag" id="flagStore">STI</span>
+                            </div>
+                        </div>
+                        <div class="debug-line">
+                            <span class="debug-label">Temp Regs:</span>
+                            <span class="debug-value" id="debugTmps">-- -- -- -- --</span>
+                        </div>
+                        <div class="debug-line">
+                            <span class="debug-label">Cycle Count:</span>
+                            <span class="debug-value" id="debugCycles">0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="environment.js"></script>
+    <script src="emulator.js"></script>
+    <script>
+        // Emulator state
+        let core = null;
+        let running = false;
+        let waitingFrame = false;
+        let paddleA = 0;
+        let paddleB = 0;
+        let buttonA = 0;
+        let buttonB = 0;
+        let cycleCount = 0;
+        let instsPerFrame = 1000;
+
+        // Display
+        const canvas = document.getElementById('display');
+        const ctx = canvas.getContext('2d');
+        const displaySize = 32;
+        const zoom = 16;
+        canvas.style.width = (displaySize * zoom) + 'px';
+        canvas.style.height = (displaySize * zoom) + 'px';
+
+        // XTerm 256 color palette (simplified)
+        const palette = generatePalette();
+
+        function generatePalette() {
+            const pal = new Array(256);
+
+            // Standard colors (0-15)
+            const standard = [
+                [0,0,0], [128,0,0], [0,128,0], [128,128,0],
+                [0,0,128], [128,0,128], [0,128,128], [192,192,192],
+                [128,128,128], [255,0,0], [0,255,0], [255,255,0],
+                [0,0,255], [255,0,255], [0,255,255], [255,255,255]
+            ];
+            for (let i = 0; i < 16; i++) {
+                pal[i] = standard[i];
+            }
+
+            // 6x6x6 color cube (16-231)
+            for (let i = 0; i < 216; i++) {
+                const r = Math.floor(i / 36);
+                const g = Math.floor((i % 36) / 6);
+                const b = i % 6;
+                pal[16 + i] = [r * 51, g * 51, b * 51];
+            }
+
+            // Grayscale (232-255)
+            for (let i = 0; i < 24; i++) {
+                const v = 8 + i * 10;
+                pal[232 + i] = [v, v, v];
+            }
+
+            return pal;
+        }
+
+        // I/O Handler
+        function ioHandler(addr, data = undefined) {
+            if (data === undefined) {
+                // Read
+                if (addr === 1024) return paddleA;
+                if (addr === 1025) return buttonA;
+                if (addr === 1026) return paddleB;
+                if (addr === 1027) return buttonB;
+                if (addr === 1028) return Math.floor(Math.random() * 256);
+                return 0xEA;
+            } else {
+                // Write
+                if (addr < 1024) {
+                    // VRAM write
+                    const x = addr % displaySize;
+                    const y = Math.floor(addr / displaySize);
+                    const color = palette[data];
+                    ctx.fillStyle = `rgb(${color[0]}, ${color[1]}, ${color[2]})`;
+                    ctx.fillRect(x, y, 1, 1);
+                } else if (addr === 1031) {
+                    // Flow control
+                    if (data & 0x01) waitingFrame = true;
+                }
+            }
+        }
+
+        // Input tracking
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = displaySize / rect.width;
+            const scaleY = displaySize / rect.height;
+            paddleA = Math.floor((e.clientX - rect.left) * scaleX);
+            paddleB = Math.floor((e.clientY - rect.top) * scaleY);
+            updateInputDisplay();
+        });
+
+        canvas.addEventListener('mousedown', (e) => {
+            if (e.button === 0) buttonA = 1;
+            if (e.button === 2) buttonB = 1;
+            updateInputDisplay();
+            e.preventDefault();
+        });
+
+        canvas.addEventListener('mouseup', (e) => {
+            if (e.button === 0) buttonA = 0;
+            if (e.button === 2) buttonB = 0;
+            updateInputDisplay();
+        });
+
+        canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+        function updateInputDisplay() {
+            document.getElementById('paddleA').textContent = paddleA;
+            document.getElementById('paddleB').textContent = paddleB;
+            document.getElementById('buttonA').textContent = buttonA;
+            document.getElementById('buttonB').textContent = buttonB;
+        }
+
+        // Speed control
+        document.getElementById('speedSlider').addEventListener('input', (e) => {
+            instsPerFrame = parseInt(e.target.value);
+            document.getElementById('speedValue').textContent =
+                `${instsPerFrame} inst/frame (~${Math.floor(75000 / instsPerFrame)} FPS)`;
+            document.getElementById('statSpeed').textContent = instsPerFrame;
+        });
+
+        // Load ROM
+        function loadROMFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const data = new Uint8Array(e.target.result);
+                initEmulator(data);
+                document.getElementById('romStatus').textContent = file.name;
+                document.getElementById('romStatus').className = 'rom-loaded';
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function loadFromAssembler() {
+            // Try to get binary from the assembler page (if opened from there)
+            const binary = localStorage.getItem('pongoasm_binary');
+            if (binary) {
+                const data = new Uint8Array(JSON.parse(binary));
+                initEmulator(data);
+                document.getElementById('romStatus').textContent = 'From Assembler';
+                document.getElementById('romStatus').className = 'rom-loaded';
+            } else {
+                alert('No program found in assembler. Please assemble a program first, then click the "Load in Emulator" button.');
+            }
+        }
+
+        function initEmulator(romData) {
+            // Extract ROM portion (starts at $8000)
+            const rom = romData.slice(0x8000);
+            core = new PongoEmu.PongoCore(rom, ioHandler);
+            cycleCount = 0;
+            clearDisplay();
+            updateDebugInfo();
+        }
+
+        function clearDisplay() {
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, displaySize, displaySize);
+        }
+
+        function toggleRunning() {
+            if (!core) {
+                alert('Please load a ROM first!');
+                return;
+            }
+            running = !running;
+            const btn = event.target;
+            if (running) {
+                btn.textContent = '⏸ Pause';
+                document.getElementById('runStatus').textContent = 'Running';
+                document.getElementById('runStatus').className = 'status-running';
+            } else {
+                btn.textContent = '▶ Start';
+                document.getElementById('runStatus').textContent = 'Paused';
+                document.getElementById('runStatus').className = 'status-paused';
+            }
+        }
+
+        function stepInstruction() {
+            if (!core) {
+                alert('Please load a ROM first!');
+                return;
+            }
+            core.spin();
+            cycleCount++;
+            updateDebugInfo();
+        }
+
+        function resetEmulator() {
+            if (!core) return;
+            core.reset(true);
+            cycleCount = 0;
+            clearDisplay();
+            updateDebugInfo();
+        }
+
+        function stopEmulator() {
+            running = false;
+            document.querySelector('.controls button').textContent = '▶ Start';
+            document.getElementById('runStatus').textContent = 'Stopped';
+            document.getElementById('runStatus').className = 'status-stopped';
+        }
+
+        function updateDebugInfo() {
+            if (!core) return;
+
+            const state = core.getState();
+
+            document.getElementById('statIP').textContent = '$' + state.ip.toString(16).padStart(4, '0').toUpperCase();
+            document.getElementById('statA').textContent = '$' + state.a.toString(16).padStart(4, '0').toUpperCase();
+            document.getElementById('statD').textContent = '$' + state.d.toString(16).padStart(4, '0').toUpperCase();
+            document.getElementById('statLoop').textContent = '$' + state.loop.toString(16).padStart(4, '0').toUpperCase();
+            document.getElementById('statIndi').textContent = '$' + state.indi.toString(16).padStart(4, '0').toUpperCase();
+
+            document.getElementById('debugInst').textContent = PongoEmu.disassemble(state.instruction);
+            document.getElementById('debugCycles').textContent = cycleCount;
+
+            document.getElementById('flag16').className = state.flags.sixteen ? 'flag active' : 'flag';
+            document.getElementById('flagInhibit').className = state.flags.inhibit ? 'flag active' : 'flag';
+            document.getElementById('flagLoad').className = state.flags.loadIndirect ? 'flag active' : 'flag';
+            document.getElementById('flagStore').className = state.flags.storeIndirect ? 'flag active' : 'flag';
+
+            const tmps = state.tmpRegs;
+            document.getElementById('debugTmps').textContent =
+                `${tmps.tmpA.toString(16).padStart(2,'0')} ` +
+                `${tmps.tmpB.toString(16).padStart(2,'0')} ` +
+                `${tmps.tmpC.toString(16).padStart(2,'0')} ` +
+                `${tmps.tmpD.toString(16).padStart(2,'0')} ` +
+                `${tmps.tmpE.toString(16).padStart(2,'0')}`;
+        }
+
+        // Main loop
+        function mainLoop() {
+            if (running && core) {
+                if (waitingFrame) {
+                    waitingFrame = false;
+                } else {
+                    for (let i = 0; i < instsPerFrame && !waitingFrame; i++) {
+                        core.spin();
+                        cycleCount++;
+                    }
+                }
+                updateDebugInfo();
+            }
+            requestAnimationFrame(mainLoop);
+        }
+
+        // Quick examples
+        function loadQuickExample(type) {
+            let program;
+
+            if (type === 'fill') {
+                program = [
+                    PongoAsm.atOrigin(0x8000),
+                    ...PongoAsm.memset(PongoAsm.EMUREG_VRAM, 1024, 0xEA),
+                    ...PongoAsm.halt()
+                ];
+            } else if (type === 'pattern') {
+                program = [
+                    PongoAsm.atOrigin(0x8000),
+                    ...PongoAsm.move(PongoAsm.EMUREG_VRAM, PongoAsm.REG_INDI),
+                    ...PongoAsm.loopFor(1024, [
+                        ...PongoAsm.move(PongoAsm.REG_INDILO, PongoAsm.REG_TMPA),
+                        ...PongoAsm.storeIndirect(PongoAsm.REG_TMPA),
+                        ...PongoAsm.indiPlusPlus()
+                    ]),
+                    ...PongoAsm.halt()
+                ];
+            } else if (type === 'counter') {
+                program = [
+                    PongoAsm.atOrigin(0x8000),
+                    PongoAsm.atLabel('loop'),
+                    ...PongoAsm.move(PongoAsm.REG_INDILO, PongoAsm.asType(':ptr', PongoAsm.EMUREG_VRAM)),
+                    ...PongoAsm.indiPlusPlus(),
+                    ...PongoAsm.waitForFrame(),
+                    ...PongoAsm.jumpTo(PongoAsm.label('loop'))
+                ];
+            }
+
+            const binary = PongoAsm.assemble(program);
+            initEmulator(binary);
+            document.getElementById('romStatus').textContent = `Quick: ${type}`;
+            document.getElementById('romStatus').className = 'rom-loaded';
+        }
+
+        // Start main loop
+        mainLoop();
+        updateInputDisplay();
+    </script>
+</body>
+</html>

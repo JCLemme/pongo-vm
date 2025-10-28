@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PongoVM Assembler - Browser Edition</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: #4ec9b0;
+            margin-bottom: 10px;
+            font-size: 2em;
+        }
+
+        .subtitle {
+            color: #808080;
+            margin-bottom: 30px;
+            font-size: 0.9em;
+        }
+
+        .section {
+            background: #252526;
+            border: 1px solid #3e3e42;
+            border-radius: 4px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        h2 {
+            color: #569cd6;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+        }
+
+        .code-editor {
+            background: #1e1e1e;
+            border: 1px solid #3e3e42;
+            border-radius: 3px;
+            padding: 15px;
+            font-family: inherit;
+            font-size: 13px;
+            color: #d4d4d4;
+            width: 100%;
+            min-height: 300px;
+            resize: vertical;
+            outline: none;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        button {
+            background: #0e639c;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 13px;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: #1177bb;
+        }
+
+        button:active {
+            background: #0d5a8f;
+        }
+
+        button.secondary {
+            background: #2d2d30;
+        }
+
+        button.secondary:hover {
+            background: #3e3e42;
+        }
+
+        .output {
+            background: #1e1e1e;
+            border: 1px solid #3e3e42;
+            border-radius: 3px;
+            padding: 15px;
+            font-size: 13px;
+            max-height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        .output.error {
+            color: #f48771;
+        }
+
+        .output.success {
+            color: #4ec9b0;
+        }
+
+        .hex-view {
+            display: grid;
+            grid-template-columns: auto 1fr auto;
+            gap: 20px;
+            font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+            font-size: 12px;
+        }
+
+        .hex-address {
+            color: #858585;
+            text-align: right;
+        }
+
+        .hex-bytes {
+            color: #b5cea8;
+        }
+
+        .hex-ascii {
+            color: #ce9178;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .stat-item {
+            background: #1e1e1e;
+            padding: 10px;
+            border-radius: 3px;
+            border: 1px solid #3e3e42;
+        }
+
+        .stat-label {
+            color: #808080;
+            font-size: 11px;
+            text-transform: uppercase;
+        }
+
+        .stat-value {
+            color: #4ec9b0;
+            font-size: 18px;
+            font-weight: bold;
+            margin-top: 5px;
+        }
+
+        .examples {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .example-btn {
+            background: #2d2d30;
+            color: #4ec9b0;
+            border: 1px solid #3e3e42;
+            padding: 8px 15px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+
+        .example-btn:hover {
+            background: #3e3e42;
+            border-color: #4ec9b0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏓 PongoVM Assembler</h1>
+        <div class="subtitle">JavaScript port of the Common Lisp assembler</div>
+
+        <div class="section">
+            <h2>Code Editor</h2>
+            <div class="examples">
+                <button class="example-btn" onclick="loadExample('simple')">Simple Example</button>
+                <button class="example-btn" onclick="loadExample('loop')">Loop Example</button>
+                <button class="example-btn" onclick="loadExample('memset')">Memset Example</button>
+                <button class="example-btn" onclick="loadExample('splash')">Splash Screen</button>
+            </div>
+            <textarea id="codeEditor" class="code-editor" placeholder="Write your assembly code here..."></textarea>
+            <div class="button-group">
+                <button onclick="assembleCode()">Assemble</button>
+                <button class="secondary" onclick="clearEditor()">Clear</button>
+                <button class="secondary" onclick="downloadBinary()">Download Binary</button>
+                <button class="secondary" onclick="loadInEmulator()">Load in Emulator</button>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Assembly Output</h2>
+            <div class="stats" id="stats" style="display: none;">
+                <div class="stat-item">
+                    <div class="stat-label">Binary Size</div>
+                    <div class="stat-value" id="statSize">0 bytes</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Code Range</div>
+                    <div class="stat-value" id="statRange">-</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Labels Found</div>
+                    <div class="stat-value" id="statLabels">0</div>
+                </div>
+            </div>
+            <div id="output" class="output">Ready to assemble...</div>
+        </div>
+    </div>
+
+    <script src="environment.js"></script>
+    <script>
+        let lastBinary = null;
+
+        const examples = {
+            simple: `// Simple move operations
+const program = [
+    PongoAsm.atOrigin(0x8000),
+    ...PongoAsm.move(0x42, PongoAsm.REG_TMPA),
+    ...PongoAsm.move(PongoAsm.REG_TMPA, PongoAsm.REG_TMPB),
+    ...PongoAsm.halt()
+];
+
+assemble(program);`,
+
+            loop: `// Loop 10 times
+const program = [
+    PongoAsm.atOrigin(0x8000),
+    ...PongoAsm.loopFor(10, [
+        ...PongoAsm.move(0xFF, PongoAsm.REG_TMPA),
+        ...PongoAsm.indiPlusPlus()
+    ]),
+    ...PongoAsm.halt()
+];
+
+assemble(program);`,
+
+            memset: `// Fill VRAM with value
+const program = [
+    PongoAsm.atOrigin(0x8000),
+    ...PongoAsm.memset(PongoAsm.EMUREG_VRAM, 1024, 0xEA),
+    ...PongoAsm.waitForFrame(),
+    ...PongoAsm.halt()
+];
+
+assemble(program);`,
+
+            splash: `// Splash screen loader
+const program = [
+    PongoAsm.atOrigin(0x0030),
+    PongoAsm.rawData(33),
+
+    PongoAsm.atOrigin(0x8000),
+    PongoAsm.atLabel('splash_data'),
+    PongoAsm.rawData([0xEA, 0xEA, 0xEA, 0xEA, 0xEC, 0xEC, 0xEC, 0xEC]),
+
+    PongoAsm.atOrigin(0x9000),
+    ...PongoAsm.memcpy(PongoAsm.label('splash_data'), PongoAsm.EMUREG_VRAM, 8),
+    ...PongoAsm.waitForFrame(),
+    ...PongoAsm.halt()
+];
+
+assemble(program);`
+        };
+
+        function loadExample(name) {
+            document.getElementById('codeEditor').value = examples[name];
+        }
+
+        function clearEditor() {
+            document.getElementById('codeEditor').value = '';
+            document.getElementById('output').innerHTML = 'Ready to assemble...';
+            document.getElementById('output').className = 'output';
+            document.getElementById('stats').style.display = 'none';
+        }
+
+        function assembleCode() {
+            const code = document.getElementById('codeEditor').value;
+            const output = document.getElementById('output');
+            const stats = document.getElementById('stats');
+
+            try {
+                // Evaluate the user's code
+                const userFunction = new Function('PongoAsm', 'assemble', code);
+                userFunction(window.PongoAsm, function(program) {
+                    // Assemble the program
+                    const binary = PongoAsm.assemble(program);
+                    lastBinary = binary;
+
+                    // Find the actual used range
+                    let firstByte = -1;
+                    let lastByte = -1;
+                    let nonZeroCount = 0;
+
+                    for (let i = 0; i < binary.length; i++) {
+                        if (binary[i] !== 0) {
+                            if (firstByte === -1) firstByte = i;
+                            lastByte = i;
+                            nonZeroCount++;
+                        }
+                    }
+
+                    // Count labels in the program
+                    const labelCount = program.filter(item =>
+                        item && item.type === 'at-label'
+                    ).length;
+
+                    // Update stats
+                    document.getElementById('statSize').textContent =
+                        `${nonZeroCount} bytes`;
+                    document.getElementById('statRange').textContent =
+                        firstByte >= 0 ? `0x${firstByte.toString(16).toUpperCase()} - 0x${lastByte.toString(16).toUpperCase()}` : '-';
+                    document.getElementById('statLabels').textContent = labelCount;
+                    stats.style.display = 'grid';
+
+                    // Generate hex view (only show non-zero regions)
+                    let hexOutput = '';
+                    if (firstByte >= 0) {
+                        const start = Math.floor(firstByte / 16) * 16;
+                        const end = Math.ceil((lastByte + 1) / 16) * 16;
+
+                        for (let i = start; i < end; i += 16) {
+                            const addr = i.toString(16).toUpperCase().padStart(4, '0');
+                            let hexBytes = '';
+                            let ascii = '';
+
+                            for (let j = 0; j < 16; j++) {
+                                const idx = i + j;
+                                if (idx < binary.length) {
+                                    const byte = binary[idx];
+                                    hexBytes += byte.toString(16).toUpperCase().padStart(2, '0') + ' ';
+                                    ascii += (byte >= 32 && byte < 127) ? String.fromCharCode(byte) : '.';
+                                } else {
+                                    hexBytes += '   ';
+                                    ascii += ' ';
+                                }
+                            }
+
+                            hexOutput += `<div class="hex-view">`;
+                            hexOutput += `<span class="hex-address">${addr}:</span>`;
+                            hexOutput += `<span class="hex-bytes">${hexBytes}</span>`;
+                            hexOutput += `<span class="hex-ascii">${ascii}</span>`;
+                            hexOutput += `</div>`;
+                        }
+                    }
+
+                    output.innerHTML = hexOutput || 'No code generated (empty program)';
+                    output.className = 'output success';
+                });
+
+            } catch (e) {
+                output.textContent = `Error: ${e.message}\n\n${e.stack}`;
+                output.className = 'output error';
+                stats.style.display = 'none';
+                lastBinary = null;
+            }
+        }
+
+        function downloadBinary() {
+            if (!lastBinary) {
+                alert('Please assemble code first!');
+                return;
+            }
+
+            // Find the actual used range
+            let firstByte = 0;
+            let lastByte = lastBinary.length - 1;
+
+            for (let i = 0; i < lastBinary.length; i++) {
+                if (lastBinary[i] !== 0) {
+                    firstByte = i;
+                    break;
+                }
+            }
+
+            for (let i = lastBinary.length - 1; i >= 0; i--) {
+                if (lastBinary[i] !== 0) {
+                    lastByte = i;
+                    break;
+                }
+            }
+
+            // Extract just the used portion (or full 64KB if requested)
+            const trimmed = lastBinary; // Use full binary for compatibility
+
+            const blob = new Blob([trimmed], { type: 'application/octet-stream' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'program.bin';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function loadInEmulator() {
+            if (!lastBinary) {
+                alert('Please assemble code first!');
+                return;
+            }
+
+            // Store binary in localStorage for emulator to pick up
+            localStorage.setItem('pongoasm_binary', JSON.stringify(Array.from(lastBinary)));
+
+            // Open emulator in new tab
+            window.open('emulator.html', '_blank');
+        }
+
+        // Load simple example by default
+        loadExample('simple');
+    </script>
+</body>
+</html>
