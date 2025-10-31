@@ -39,6 +39,9 @@
   (defconstant color-black 0)
   (defconstant color-left 107)
   (defconstant color-right 89)
+
+  (defconstant left-top (screen-xy 1 3))
+  (defconstant right-top (screen-xy 30 3))
 )
 
 ; Static images. 
@@ -64,8 +67,9 @@
   (move 5 (label "pong-left-score"))
   (move 2 (label "pong-right-score"))
 
+  (move emureg-paddle-a (label "pong-left-pos"))
   ; A frankly pathetic (but faster) way of drawing the scores.
-  (pause-emulation)
+  ;(pause-emulation)
   (move #x00 reg-loophi)
   (move (as-type :ptr (label "pong-left-score")) reg-looplo)
 
@@ -87,6 +91,29 @@
   (if-else () ((move color-right (as-type :ptr (screen-xy 20 1))) (loop--)))
 
   ; Draw paddles.
+  ;(pause-emulation)
+  (move (ash left-top -8) reg-indihi)
+  (move (logand left-top #xFF) reg-indilo)
+
+  ; TODO: :( need auto-width for loop variables, auto-ptr for labels, proper for loop test order
+  (move #x00 reg-loophi)
+  (move (as-type :ptr (label "pong-left-pos")) reg-looplo)
+  (jump-if (label "left-pushloop"))
+  (jump-to (label "left-pushend"))
+  (at-label "left-pushloop")
+    (move reg-loop reg-tmpb)
+    (loop-for 32 ( (indi++) ))
+    (move reg-tmpb reg-loop)
+    (loop--)
+    (jump-if (label "left-pushloop"))
+    (at-label "left-pushend")
+
+  (loop-for 5 (
+    (store-indirect color-white)
+    (move reg-loop reg-tmpb)
+    (loop-for 32 ( (indi++) ))
+    (move reg-tmpb reg-loop)
+  ))
 
   (wait-for-frame)
 ))

@@ -1,6 +1,4 @@
-You should never have to worry that someone is wasting your time, by making you read code that they didn't write.
-
-Let's save us both the trouble. Here are all the things touched by AI in this project:
+Here are all the things touched by AI in this project:
 
 * `(number-to-chunks)` in `environment.lisp` was ported by Claude from its original Python implementation (in `old/asmfour.py`). It's fiddly and I wanted a "beachhead" from which to start the Lisp port of the assembler. 
 
